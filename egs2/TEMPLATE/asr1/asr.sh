@@ -67,6 +67,7 @@ use_lm=true       # Use language model for ASR decoding.
 lm_tag=           # Suffix to the result dir for language model training.
 lm_exp=           # Specify the direcotry path for LM experiment.
                   # If this option is specified, lm_tag is ignored.
+lm_stats_dir=     # Specify the direcotry path for LM statistics.
 lm_config=        # Config for language model training.
 lm_args=          # Arguments for language model training, e.g., "--max_epoch 10".
                   # Note that it will overwrite args in lm config.
@@ -76,12 +77,13 @@ num_splits_lm=1   # Number of splitting for lm corpus.
 word_vocab_size=10000 # Size of word vocabulary.
 
 # ASR model related
-asr_tag=    # Suffix to the result dir for asr model training.
-asr_exp=    # Specify the direcotry path for ASR experiment.
-            # If this option is specified, asr_tag is ignored.
-asr_config= # Config for asr model training.
-asr_args=   # Arguments for asr model training, e.g., "--max_epoch 10".
-            # Note that it will overwrite args in asr config.
+asr_tag=       # Suffix to the result dir for asr model training.
+asr_exp=       # Specify the direcotry path for ASR experiment.
+               # If this option is specified, asr_tag is ignored.
+asr_stats_dir= # Specify the direcotry path for ASR statistics.
+asr_config=    # Config for asr model training.
+asr_args=      # Arguments for asr model training, e.g., "--max_epoch 10".
+               # Note that it will overwrite args in asr config.
 feats_normalize=global_mvn # Normalizaton layer type.
 num_splits_asr=1           # Number of splitting for lm corpus.
 
@@ -163,6 +165,7 @@ Options:
     --lm_tag          # Suffix to the result dir for language model training (default="${lm_tag}").
     --lm_exp          # Specify the direcotry path for LM experiment.
                       # If this option is specified, lm_tag is ignored (default="${lm_exp}").
+    --lm_stats_dir    # Specify the direcotry path for LM statistics (default="${lm_stats_dir}").
     --lm_config       # Config for language model training (default="${lm_config}").
     --lm_args         # Arguments for language model training (default="${lm_args}").
                       # e.g., --lm_args "--max_epoch 10"
@@ -175,6 +178,7 @@ Options:
     --asr_tag          # Suffix to the result dir for asr model training (default="${asr_tag}").
     --asr_exp          # Specify the direcotry path for ASR experiment.
                        # If this option is specified, asr_tag is ignored (default="${asr_exp}").
+    --asr_stats_dir    # Specify the direcotry path for ASR statistics (default="${asr_stats_dir}").
     --asr_config       # Config for asr model training (default="${asr_config}").
     --asr_args         # Arguments for asr model training (default="${asr_args}").
                        # e.g., --asr_args "--max_epoch 10"
@@ -256,7 +260,11 @@ fi
 [ -z "${lm_test_text}" ] && lm_test_text="${data_feats}/${test_sets%% *}/text"
 
 # Check tokenization type
-token_listdir=data/token_list
+if [ "${lang}" != noinfo ]; then
+    token_listdir=data/${lang}_token_list
+else
+    token_listdir=data/token_list
+fi
 bpedir="${token_listdir}/bpe_${bpemode}${nbpe}"
 bpeprefix="${bpedir}"/bpe
 bpemodel="${bpeprefix}".model
@@ -293,9 +301,14 @@ fi
 # Set tag for naming of model directory
 if [ -z "${asr_tag}" ]; then
     if [ -n "${asr_config}" ]; then
-        asr_tag="$(basename "${asr_config}" .yaml)_${feats_type}_${token_type}"
+        asr_tag="$(basename "${asr_config}" .yaml)_${feats_type}"
     else
-        asr_tag="train_${feats_type}_${token_type}"
+        asr_tag="train_${feats_type}"
+    fi
+    if [ "${lang}" != noinfo ]; then
+        asr_tag+="_${lang}_${token_type}"
+    else
+        asr_tag+="_${token_type}"
     fi
     if [ "${token_type}" = bpe ]; then
         asr_tag+="${nbpe}"
@@ -310,9 +323,14 @@ if [ -z "${asr_tag}" ]; then
 fi
 if [ -z "${lm_tag}" ]; then
     if [ -n "${lm_config}" ]; then
-        lm_tag="$(basename "${lm_config}" .yaml)_${lm_token_type}"
+        lm_tag="$(basename "${lm_config}" .yaml)"
     else
-        lm_tag="train_${lm_token_type}"
+        lm_tag="train"
+    fi
+    if [ "${lang}" != noinfo ]; then
+        lm_tag+="_${lang}_${lm_token_type}"
+    else
+        lm_tag+="_${lm_token_type}"
     fi
     if [ "${lm_token_type}" = bpe ]; then
         lm_tag+="${nbpe}"
@@ -324,16 +342,28 @@ if [ -z "${lm_tag}" ]; then
 fi
 
 # The directory used for collect-stats mode
-asr_stats_dir="${expdir}/asr_stats_${feats_type}_${token_type}"
-if [ "${token_type}" = bpe ]; then
-    asr_stats_dir+="${nbpe}"
+if [ -z "${asr_stats_dir}" ]; then
+    if [ "${lang}" != noinfo ]; then
+        asr_stats_dir="${expdir}/asr_stats_${feats_type}_${lang}_${token_type}"
+    else
+        asr_stats_dir="${expdir}/asr_stats_${feats_type}_${token_type}"
+    fi
+    if [ "${token_type}" = bpe ]; then
+        asr_stats_dir+="${nbpe}"
+    fi
+    if [ -n "${speed_perturb_factors}" ]; then
+        asr_stats_dir+="_sp"
+    fi
 fi
-if [ -n "${speed_perturb_factors}" ]; then
-    asr_stats_dir+="_sp"
-fi
-lm_stats_dir="${expdir}/lm_stats_${lm_token_type}"
-if [ "${lm_token_type}" = bpe ]; then
-    lm_stats_dir+="${nbpe}"
+if [ -z "${lm_stats_dir}" ]; then
+    if [ "${lang}" != noinfo ]; then
+        lm_stats_dir="${expdir}/lm_stats_${lang}_${lm_token_type}"
+    else
+        lm_stats_dir="${expdir}/lm_stats_${lm_token_type}"
+    fi
+    if [ "${lm_token_type}" = bpe ]; then
+        lm_stats_dir+="${nbpe}"
+    fi
 fi
 # The directory used for training commands
 if [ -z "${asr_exp}" ]; then
